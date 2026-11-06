@@ -104,17 +104,28 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                             view?.evaluateJavascript(
                                 """
                                 (function() {
-                                    // Hide CurseForge chrome
+                                    // Hide CurseForge chrome, promo, filters, pagination
                                     const hideSelectors = [
                                         'header', 'footer', 'nav',
                                         '[class*="header"]', '[class*="footer"]', '[class*="nav"]',
                                         '[class*="bottom"]', '[class*="tab-bar"]', '[class*="toolbar"]',
-                                        '[class*="mobile-nav"]', '[class*="app-nav"]'
+                                        '[class*="mobile-nav"]', '[class*="app-nav"]',
+                                        '[class*="banner"]', '[class*="promo"]', '[class*="hero"]',
+                                        '[class*="filter"]', '[class*="sort"]',
+                                        '[class*="pagination"]', '[class*="pager"]',
+                                        '[class*="breadcrumb"]'
                                     ];
                                     hideSelectors.forEach(sel => {
                                         document.querySelectorAll(sel).forEach(el => {
                                             if (el.id !== 'wf-search') el.style.display = 'none';
                                         });
+                                    });
+
+                                    // Also hide by text content
+                                    document.querySelectorAll('div, section, aside').forEach(el => {
+                                        const t = (el.innerText || '').toLowerCase();
+                                        if (t.includes('filters') && t.includes('sort') && el.children.length < 5) el.style.display = 'none';
+                                        if (t.includes('browse addons for') || t.includes('10,000+ projects') || t.includes('addon support')) el.style.display = 'none';
                                     });
 
                                     // Sticky search bar at top
@@ -146,7 +157,6 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         const parent = a.closest('div, article, li, section') || a.parentElement;
                                         if (!parent || parent.dataset.wfProcessed) return;
                                         parent.dataset.wfProcessed = '1';
-                                        parent.style.position = 'relative';
 
                                         const name = (a.innerText || slug).trim().split('\n')[0].substring(0, 60);
                                         const installed = window.AddonBridge && window.AddonBridge.isInstalled(name);
@@ -158,16 +168,16 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                             el.onclick = function(e) { e.preventDefault(); e.stopImmediatePropagation(); return false; };
                                         });
 
-                                        // Inject buttons in a cleaner position (top-right of card)
+                                        // Inject buttons at the bottom of the card
                                         if (!parent.querySelector('.wf-actions')) {
                                             const actions = document.createElement('div');
                                             actions.className = 'wf-actions';
-                                            actions.style.cssText = 'position:absolute;top:8px;right:8px;display:flex;gap:4px;z-index:10;';
+                                            actions.style.cssText = 'display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid #333;';
 
                                             if (installed) {
                                                 const upd = document.createElement('button');
                                                 upd.textContent = 'Update';
-                                                upd.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:13px;';
+                                                upd.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:8px 16px;border-radius:4px;font-size:14px;flex:1;';
                                                 upd.onclick = function(e) {
                                                     e.preventDefault();
                                                     e.stopImmediatePropagation();
@@ -180,7 +190,7 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
 
                                                 const un = document.createElement('button');
                                                 un.textContent = 'Uninstall';
-                                                un.style.cssText = 'background:#555;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:13px;';
+                                                un.style.cssText = 'background:#555;color:#fff;border:none;padding:8px 16px;border-radius:4px;font-size:14px;';
                                                 un.onclick = function(e) {
                                                     e.preventDefault();
                                                     e.stopImmediatePropagation();
@@ -191,7 +201,7 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                             } else {
                                                 const inst = document.createElement('button');
                                                 inst.textContent = 'Install';
-                                                inst.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:13px;';
+                                                inst.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:8px 16px;border-radius:4px;font-size:14px;flex:1;';
                                                 inst.onclick = function(e) {
                                                     e.preventDefault();
                                                     e.stopImmediatePropagation();
