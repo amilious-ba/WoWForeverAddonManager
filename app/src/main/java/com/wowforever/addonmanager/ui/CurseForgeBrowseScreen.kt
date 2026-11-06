@@ -104,7 +104,20 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                             view?.evaluateJavascript(
                                 """
                                 (function() {
-                                    // Sticky search bar
+                                    // Hide CurseForge chrome
+                                    const hideSelectors = [
+                                        'header', 'footer', 'nav',
+                                        '[class*="header"]', '[class*="footer"]', '[class*="nav"]',
+                                        '[class*="bottom"]', '[class*="tab-bar"]', '[class*="toolbar"]',
+                                        '[class*="mobile-nav"]', '[class*="app-nav"]'
+                                    ];
+                                    hideSelectors.forEach(sel => {
+                                        document.querySelectorAll(sel).forEach(el => {
+                                            if (el.id !== 'wf-search') el.style.display = 'none';
+                                        });
+                                    });
+
+                                    // Sticky search bar at top
                                     if (!document.getElementById('wf-search')) {
                                         const bar = document.createElement('div');
                                         bar.id = 'wf-search';
@@ -133,30 +146,33 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         const parent = a.closest('div, article, li, section') || a.parentElement;
                                         if (!parent || parent.dataset.wfProcessed) return;
                                         parent.dataset.wfProcessed = '1';
+                                        parent.style.position = 'relative';
 
                                         const name = (a.innerText || slug).trim().split('\n')[0].substring(0, 60);
                                         const installed = window.AddonBridge && window.AddonBridge.isInstalled(name);
 
-                                        // Hide original download buttons / links
+                                        // Hide original download buttons
                                         const originals = parent.querySelectorAll('button, a[href*="download"], [class*="download"], [class*="Download"]');
                                         originals.forEach(el => {
                                             el.style.display = 'none';
                                             el.onclick = function(e) { e.preventDefault(); e.stopImmediatePropagation(); return false; };
                                         });
 
-                                        // Inject our own clean buttons
+                                        // Inject buttons in a cleaner position (top-right of card)
                                         if (!parent.querySelector('.wf-actions')) {
                                             const actions = document.createElement('div');
                                             actions.className = 'wf-actions';
-                                            actions.style.cssText = 'margin-top:8px;display:flex;gap:6px;';
+                                            actions.style.cssText = 'position:absolute;top:8px;right:8px;display:flex;gap:4px;z-index:10;';
 
                                             if (installed) {
                                                 const upd = document.createElement('button');
                                                 upd.textContent = 'Update';
-                                                upd.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:14px;';
+                                                upd.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:13px;';
                                                 upd.onclick = function(e) {
                                                     e.preventDefault();
                                                     e.stopImmediatePropagation();
+                                                    upd.textContent = 'Updating...';
+                                                    upd.disabled = true;
                                                     window.AddonBridge.onInstall(href, name);
                                                     return false;
                                                 };
@@ -164,7 +180,7 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
 
                                                 const un = document.createElement('button');
                                                 un.textContent = 'Uninstall';
-                                                un.style.cssText = 'background:#555;color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:14px;';
+                                                un.style.cssText = 'background:#555;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:13px;';
                                                 un.onclick = function(e) {
                                                     e.preventDefault();
                                                     e.stopImmediatePropagation();
@@ -175,10 +191,12 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                             } else {
                                                 const inst = document.createElement('button');
                                                 inst.textContent = 'Install';
-                                                inst.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:14px;';
+                                                inst.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:13px;';
                                                 inst.onclick = function(e) {
                                                     e.preventDefault();
                                                     e.stopImmediatePropagation();
+                                                    inst.textContent = 'Installing...';
+                                                    inst.disabled = true;
                                                     window.AddonBridge.onInstall(href, name);
                                                     return false;
                                                 };
