@@ -53,7 +53,8 @@ fun AddonManagerApp() {
                 folderUri = folderUri,
                 onPickFolder = { folderPicker.launch(null) },
                 onInstalled = { currentScreen = "installed" },
-                onBrowse = { currentScreen = "browse" },
+                onBrowseWowInterface = { currentScreen = "browse" },
+                onBrowseCurseForge = { currentScreen = "curseforge_browse" },
                 onInstallFromUrl = { currentScreen = "url" },
                 onCurseForge = { currentScreen = "curseforge" },
                 context = context
@@ -78,6 +79,10 @@ fun AddonManagerApp() {
                 folderUri = folderUri,
                 onBack = { currentScreen = "home" }
             )
+            "curseforge_browse" -> CurseForgeBrowseScreen(
+                folderUri = folderUri,
+                onBack = { currentScreen = "home" }
+            )
         }
     }
 }
@@ -87,7 +92,8 @@ fun HomeScreen(
     folderUri: Uri?,
     onPickFolder: () -> Unit,
     onInstalled: () -> Unit,
-    onBrowse: () -> Unit,
+    onBrowseWowInterface: () -> Unit,
+    onBrowseCurseForge: () -> Unit,
     onInstallFromUrl: () -> Unit,
     onCurseForge: () -> Unit,
     context: Context
@@ -98,7 +104,7 @@ fun HomeScreen(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("WoW Forever Addon Manager", style = MaterialTheme.typography.headlineMedium, color = CurseText)
-        Text("Browse and install addons from WoWInterface or CurseForge.", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
+        Text("Browse and install addons from WowInterface or CurseForge.", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
 
         Button(onClick = onPickFolder, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text(if (folderUri != null) "Change AddOns Folder" else "Select AddOns Folder")
@@ -109,8 +115,11 @@ fun HomeScreen(
             Text("Please select the AddOns folder.\nCommon path: /storage/emulated/0/WoW Forever/_forever_/Interface/AddOns", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
         }
 
-        Button(onClick = onBrowse, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
-            Text("Browse Addons")
+        Button(onClick = onBrowseWowInterface, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
+            Text("Browse WowInterface")
+        }
+        Button(onClick = onBrowseCurseForge, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
+            Text("Browse CurseForge")
         }
         Button(onClick = onInstalled, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text("Installed Addons")
