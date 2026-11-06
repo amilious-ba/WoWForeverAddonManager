@@ -63,6 +63,7 @@ fun AddonManagerApp() {
                 onPickFolder = { folderPicker.launch(null) },
                 onSearch = { currentScreen = "search" },
                 onInstalled = { currentScreen = "installed" },
+                onInstallFromUrl = { currentScreen = "url" },
                 onAutoDetect = {
                     // Try common path
                     val common = File(Environment.getExternalStorageDirectory(), "WoW Forever/_forever_/Interface/AddOns")
@@ -85,6 +86,11 @@ fun AddonManagerApp() {
                 onBack = { currentScreen = "home" },
                 context = context
             )
+            "url" -> UrlInstallScreen(
+                folderUri = folderUri,
+                onBack = { currentScreen = "home" },
+                context = context
+            )
         }
     }
 }
@@ -97,6 +103,7 @@ fun HomeScreen(
     onPickFolder: () -> Unit,
     onSearch: () -> Unit,
     onInstalled: () -> Unit,
+    onInstallFromUrl: () -> Unit,
     onAutoDetect: () -> Unit,
     context: Context
 ) {
@@ -106,12 +113,12 @@ fun HomeScreen(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("WoW Forever Addon Manager", style = MaterialTheme.typography.headlineMedium)
-        Text("Get API key from console.curseforge.com", style = MaterialTheme.typography.bodySmall)
+        Text("API key optional. Use Install from URL if you don't have one.", style = MaterialTheme.typography.bodySmall)
 
         OutlinedTextField(
             value = apiKey,
             onValueChange = onApiKeyChange,
-            label = { Text("CurseForge API Key") },
+            label = { Text("CurseForge API Key (optional)") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -125,7 +132,10 @@ fun HomeScreen(
         }
 
         Button(onClick = onSearch, enabled = apiKey.isNotBlank() && folderUri != null, modifier = Modifier.fillMaxWidth()) {
-            Text("Search & Install Addons")
+            Text("Search & Install (API)")
+        }
+        Button(onClick = onInstallFromUrl, enabled = folderUri != null, modifier = Modifier.fillMaxWidth()) {
+            Text("Install from URL (no API)")
         }
         Button(onClick = onInstalled, enabled = folderUri != null, modifier = Modifier.fillMaxWidth()) {
             Text("Manage Installed")
@@ -151,11 +161,6 @@ fun HomeScreen(
             Text(if (checkingUpdate) "Checking..." else "Check for App Updates")
         }
         updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-
-        Text(
-            "Note: Full CurseForge account login/sync is not supported in this quick app (requires proprietary auth). Local management + API key works for search/install/updates.",
-            style = MaterialTheme.typography.bodySmall
-        )
     }
 }
 
@@ -215,6 +220,99 @@ suspend fun checkForUpdate(context: Context): String {
     context.startActivity(intent)
 
     return "Update $tag downloaded. Install prompt opened."
+}
+
+@Composable
+fun UrlInstallScreen(folderUri: Uri?, onBack: () -> Unit, context: Context) {
+    var url by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = onBack) { Text("Back") }
+            Spacer(Modifier.width(8.dp))
+            Text("Install from URL", style = MaterialTheme.typography.titleMedium)
+        }
+        Text("Paste a direct .zip download link (from CurseForge, GitHub, WowInterface, etc.).", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(
+            value = url,
+            onValueChange = { url = it },
+            label = { Text("Addon .zip URL") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Button(
+            onClick = {
+                if (url.isBlank() || folderUri == null) return@Button
+                busy = true
+                status = null
+                scope.launch {
+                    try {
+                        installFromUrl(url.trim(), folderUri, context)
+                        status = "Installed successfully"
+                    } catch (e: Exception) {
+                        status = "Failed: ${e.message}"
+                    }
+                    busy = false
+                }
+            },
+            enabled = !busy && url.isNotBlank() && folderUri != null,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (busy) "Installing..." else "Download & Install")
+        }
+        status?.let { Text(it) }
+    }
+}
+
+suspend fun installFromUrl(url: String, folderUri: Uri, context: Context) {
+    val client = OkHttpClient()
+    val req = Request.Builder().url(url).build()
+    val resp = withContext(Dispatchers.IO) { client.newCall(req).execute() }
+    if (!resp.isSuccessful) throw Exception("Download failed (${resp.code})")
+
+    val fileName = url.substringAfterLast('/').substringBefore('?').ifBlank { "addon.zip" }
+    val tempFile = File(context.cacheDir, fileName)
+    withContext(Dispatchers.IO) {
+        resp.body?.byteStream()?.use { input ->
+            FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+        }
+    }
+
+    val tree = DocumentFile.fromTreeUri(context, folderUri) ?: throw Exception("Invalid folder")
+    withContext(Dispatchers.IO) {
+        ZipInputStream(tempFile.inputStream()).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory && entry.name.isNotEmpty()) {
+                    val parts = entry.name.trim('/').split('/')
+                    if (parts.isNotEmpty()) {
+                        var current: DocumentFile = tree
+                        for (i in 0 until parts.size - 1) {
+                            val part = parts[i]
+                            if (part.isNotEmpty()) {
+                                current = current.findFile(part) ?: current.createDirectory(part)
+                                    ?: throw Exception("Failed to create dir $part")
+                            }
+                        }
+                        val outName = parts.last()
+                        if (outName.isNotEmpty()) {
+                            val outFile = current.findFile(outName)
+                                ?: current.createFile("application/octet-stream", outName)
+                                ?: throw Exception("Failed to create file $outName")
+                            context.contentResolver.openOutputStream(outFile.uri)?.use { out ->
+                                zis.copyTo(out)
+                            }
+                        }
+                    }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+        }
+    }
+    tempFile.delete()
 }
 
 @Composable
