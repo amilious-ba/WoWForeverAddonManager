@@ -121,7 +121,6 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         });
                                     });
 
-                                    // Also hide by text content
                                     document.querySelectorAll('div, section, aside').forEach(el => {
                                         const t = (el.innerText || '').toLowerCase();
                                         if (t.includes('filters') && t.includes('sort') && el.children.length < 5) el.style.display = 'none';
@@ -135,9 +134,21 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#1a1a1a;padding:8px;display:flex;gap:8px;';
                                         bar.innerHTML = '<input id="wf-q" placeholder="Search addons" style="flex:1;padding:8px;background:#222;color:#fff;border:1px solid #FF6A00;border-radius:4px;" /><button id="wf-go" style="background:#FF6A00;color:#fff;border:none;padding:8px 12px;border-radius:4px;">Search</button>';
                                         document.body.prepend(bar);
+
+                                        // Pre-fill from current URL if searching
+                                        try {
+                                            const params = new URLSearchParams(window.location.search);
+                                            const existing = params.get('search') || '';
+                                            if (existing) document.getElementById('wf-q').value = existing;
+                                        } catch(e) {}
+
                                         document.getElementById('wf-go').onclick = function() {
                                             const q = document.getElementById('wf-q').value.trim();
-                                            if (q) window.location.href = 'https://www.curseforge.com/wow/addons/search?search=' + encodeURIComponent(q);
+                                            if (q) {
+                                                window.location.href = 'https://www.curseforge.com/wow/addons/search?search=' + encodeURIComponent(q);
+                                            } else {
+                                                window.location.href = 'https://www.curseforge.com/wow/addons';
+                                            }
                                         };
                                         document.getElementById('wf-q').addEventListener('keydown', function(e) {
                                             if (e.key === 'Enter') document.getElementById('wf-go').click();
@@ -161,14 +172,12 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         const name = (a.innerText || slug).trim().split('\n')[0].substring(0, 60);
                                         const installed = window.AddonBridge && window.AddonBridge.isInstalled(name);
 
-                                        // Hide original download buttons
                                         const originals = parent.querySelectorAll('button, a[href*="download"], [class*="download"], [class*="Download"]');
                                         originals.forEach(el => {
                                             el.style.display = 'none';
                                             el.onclick = function(e) { e.preventDefault(); e.stopImmediatePropagation(); return false; };
                                         });
 
-                                        // Inject buttons at the bottom of the card
                                         if (!parent.querySelector('.wf-actions')) {
                                             const actions = document.createElement('div');
                                             actions.className = 'wf-actions';
