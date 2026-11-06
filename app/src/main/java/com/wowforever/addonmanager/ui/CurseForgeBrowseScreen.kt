@@ -14,9 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -35,7 +33,6 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        // Top bar with Back and status
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -71,7 +68,6 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                     installFromUrl(info.downloadUrl, folderUri, context)
                                     injectProjectId(info.projectId, info.slug, folderUri, context)
                                     status = "Installed $name"
-                                    // Refresh installed list
                                     val tree = DocumentFile.fromTreeUri(context, folderUri)
                                     installedFolders = tree?.listFiles()?.filter { it.isDirectory }?.mapNotNull { it.name }?.toSet() ?: emptySet()
                                 } catch (e: Exception) {
@@ -105,11 +101,10 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
                             super.onPageFinished(view, url)
-                            // Inject UI modifications
                             view?.evaluateJavascript(
                                 """
                                 (function() {
-                                    // Add a simple top search if not present
+                                    // Sticky search bar
                                     if (!document.getElementById('wf-search')) {
                                         const bar = document.createElement('div');
                                         bar.id = 'wf-search';
@@ -125,53 +120,72 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         });
                                     }
 
-                                    // Rewrite download / install buttons
+                                    // Process project cards
                                     const links = document.querySelectorAll('a[href*="/wow/addons/"]');
                                     const seen = new Set();
                                     links.forEach(a => {
                                         const href = a.href || '';
-                                        if (!href.includes('/wow/addons/') || href.includes('/search')) return;
+                                        if (!href.includes('/wow/addons/') || href.includes('/search') || href.includes('/files')) return;
                                         const slug = href.split('/').filter(Boolean).pop();
-                                        if (!slug || seen.has(slug)) return;
+                                        if (!slug || seen.has(slug) || slug.length < 2) return;
                                         seen.add(slug);
 
-                                        // Find nearby download-like buttons
                                         const parent = a.closest('div, article, li, section') || a.parentElement;
-                                        if (!parent) return;
-                                        const buttons = parent.querySelectorAll('button, a[href*="download"], [class*="download"], [class*="install"]');
-                                        buttons.forEach(btn => {
-                                            if (btn.dataset.wfHooked) return;
-                                            btn.dataset.wfHooked = '1';
-                                            const name = (a.innerText || slug).trim().split('\n')[0];
-                                            const installed = window.AddonBridge && window.AddonBridge.isInstalled(name);
-                                            if (installed) {
-                                                btn.textContent = 'Update';
-                                                btn.onclick = function(e) {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    window.AddonBridge.onInstall(href, name);
-                                                };
-                                                // Add uninstall
-                                                if (!parent.querySelector('.wf-uninstall')) {
-                                                    const u = document.createElement('button');
-                                                    u.className = 'wf-uninstall';
-                                                    u.textContent = 'Uninstall';
-                                                    u.style.cssText = 'margin-left:6px;background:#555;color:#fff;border:none;padding:6px 10px;border-radius:4px;';
-                                                    u.onclick = function(e) {
-                                                        e.preventDefault();
-                                                        window.AddonBridge.onUninstall(name);
-                                                    };
-                                                    btn.parentElement.appendChild(u);
-                                                }
-                                            } else {
-                                                btn.textContent = 'Install';
-                                                btn.onclick = function(e) {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    window.AddonBridge.onInstall(href, name);
-                                                };
-                                            }
+                                        if (!parent || parent.dataset.wfProcessed) return;
+                                        parent.dataset.wfProcessed = '1';
+
+                                        const name = (a.innerText || slug).trim().split('\n')[0].substring(0, 60);
+                                        const installed = window.AddonBridge && window.AddonBridge.isInstalled(name);
+
+                                        // Hide original download buttons / links
+                                        const originals = parent.querySelectorAll('button, a[href*="download"], [class*="download"], [class*="Download"]');
+                                        originals.forEach(el => {
+                                            el.style.display = 'none';
+                                            el.onclick = function(e) { e.preventDefault(); e.stopImmediatePropagation(); return false; };
                                         });
+
+                                        // Inject our own clean buttons
+                                        if (!parent.querySelector('.wf-actions')) {
+                                            const actions = document.createElement('div');
+                                            actions.className = 'wf-actions';
+                                            actions.style.cssText = 'margin-top:8px;display:flex;gap:6px;';
+
+                                            if (installed) {
+                                                const upd = document.createElement('button');
+                                                upd.textContent = 'Update';
+                                                upd.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:14px;';
+                                                upd.onclick = function(e) {
+                                                    e.preventDefault();
+                                                    e.stopImmediatePropagation();
+                                                    window.AddonBridge.onInstall(href, name);
+                                                    return false;
+                                                };
+                                                actions.appendChild(upd);
+
+                                                const un = document.createElement('button');
+                                                un.textContent = 'Uninstall';
+                                                un.style.cssText = 'background:#555;color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:14px;';
+                                                un.onclick = function(e) {
+                                                    e.preventDefault();
+                                                    e.stopImmediatePropagation();
+                                                    window.AddonBridge.onUninstall(name);
+                                                    return false;
+                                                };
+                                                actions.appendChild(un);
+                                            } else {
+                                                const inst = document.createElement('button');
+                                                inst.textContent = 'Install';
+                                                inst.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:14px;';
+                                                inst.onclick = function(e) {
+                                                    e.preventDefault();
+                                                    e.stopImmediatePropagation();
+                                                    window.AddonBridge.onInstall(href, name);
+                                                    return false;
+                                                };
+                                                actions.appendChild(inst);
+                                            }
+                                            parent.appendChild(actions);
+                                        }
                                     });
                                 })();
                                 """.trimIndent(),
