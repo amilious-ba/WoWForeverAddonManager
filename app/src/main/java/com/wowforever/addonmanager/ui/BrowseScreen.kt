@@ -66,7 +66,7 @@ fun BrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                 scope.launch {
                     try {
                         results = searchWowInterface(query)
-                        if (results.isEmpty()) status = "No results"
+                        if (results.isEmpty()) status = "No results for \"$query\""
                     } catch (e: Exception) {
                         status = "Search failed: ${e.message}"
                     }
@@ -114,7 +114,9 @@ fun AddonCard(
         Column(Modifier.padding(12.dp)) {
             Text(addon.name, style = MaterialTheme.typography.titleMedium)
             Text("v${addon.version} by ${addon.author}", style = MaterialTheme.typography.bodySmall)
-            Text(addon.description, maxLines = 3, style = MaterialTheme.typography.bodySmall)
+            if (addon.description.isNotBlank()) {
+                Text(addon.description, maxLines = 3, style = MaterialTheme.typography.bodySmall)
+            }
             Spacer(Modifier.height(8.dp))
             Row {
                 if (!isInstalled) {
@@ -182,28 +184,38 @@ suspend fun searchWowInterface(query: String): List<AddonItem> {
     val client = OkHttpClient()
     val req = Request.Builder()
         .url("https://api.mmoui.com/v3/game/WOW/filelist.json")
+        .header("User-Agent", "WoWForeverAddonManager/1.0")
         .build()
     val body = withContext(Dispatchers.IO) {
-        client.newCall(req).execute().use { it.body?.string() ?: throw Exception("Empty") }
+        client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+            resp.body?.string() ?: throw Exception("Empty response")
+        }
     }
     val arr = JSONArray(body)
-    val q = query.lowercase()
+    val q = query.trim().lowercase()
     val matches = mutableListOf<AddonItem>()
     for (i in 0 until arr.length()) {
         val obj = arr.getJSONObject(i)
         val name = obj.optString("UIName", "")
-        val title = obj.optString("UIName", name)
-        val desc = obj.optString("UIDescription", "")
-        if (name.lowercase().contains(q) || title.lowercase().contains(q) || desc.lowercase().contains(q)) {
+        if (name.isBlank()) continue
+        if (name.lowercase().contains(q)) {
             val id = obj.optString("UID", "")
             val version = obj.optString("UIVersion", "")
             val author = obj.optString("UIAuthorName", "")
-            val download = obj.optString("UIDownload", "")
-            if (download.isNotBlank()) {
-                matches.add(AddonItem(id, title.ifBlank { name }, version, desc, download, author))
-            }
+            val downloadUrl = "https://cdn.wowinterface.com/downloads/getfile.php?id=$id"
+            matches.add(
+                AddonItem(
+                    id = id,
+                    name = name,
+                    version = version,
+                    description = "",
+                    downloadUrl = downloadUrl,
+                    author = author
+                )
+            )
         }
-        if (matches.size >= 30) break
+        if (matches.size >= 40) break
     }
     return matches
 }
