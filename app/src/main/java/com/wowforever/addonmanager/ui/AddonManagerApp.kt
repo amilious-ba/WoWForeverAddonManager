@@ -25,9 +25,14 @@ import com.wowforever.addonmanager.model.ModFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
+import android.content.pm.PackageManager
+import androidx.core.content.FileProvider
 
 @Composable
 fun AddonManagerApp() {
@@ -65,7 +70,8 @@ fun AddonManagerApp() {
                         // For simplicity, note that SAF is preferred; user can still pick
                         // In practice, for shared storage we might need different handling
                     }
-                }
+                },
+                context = context
             )
             "search" -> SearchScreen(
                 apiKey = apiKey,
@@ -91,8 +97,13 @@ fun HomeScreen(
     onPickFolder: () -> Unit,
     onSearch: () -> Unit,
     onInstalled: () -> Unit,
-    onAutoDetect: () -> Unit
+    onAutoDetect: () -> Unit,
+    context: Context
 ) {
+    var updateMessage by remember { mutableStateOf<String?>(null) }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("WoW Forever Addon Manager", style = MaterialTheme.typography.headlineMedium)
         Text("Get API key from console.curseforge.com", style = MaterialTheme.typography.bodySmall)
@@ -120,11 +131,59 @@ fun HomeScreen(
             Text("Manage Installed")
         }
 
+        Button(
+            onClick = {
+                checkingUpdate = true
+                updateMessage = null
+                scope.launch {
+                    try {
+                        val result = checkForUpdate(context)
+                        updateMessage = result
+                    } catch (e: Exception) {
+                        updateMessage = "Update check failed: ${e.message}"
+                    }
+                    checkingUpdate = false
+                }
+            },
+            enabled = !checkingUpdate,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (checkingUpdate) "Checking..." else "Check for App Updates")
+        }
+        updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
         Text(
             "Note: Full CurseForge account login/sync is not supported in this quick app (requires proprietary auth). Local management + API key works for search/install/updates.",
             style = MaterialTheme.typography.bodySmall
         )
     }
+}
+
+suspend fun checkForUpdate(context: Context): String {
+    val client = OkHttpClient()
+    val req = Request.Builder()
+        .url("https://api.github.com/repos/amilious-ba/WoWForeverAddonManager/releases/latest")
+        .header("Accept", "application/vnd.github+json")
+        .build()
+    val body = withContext(Dispatchers.IO) {
+        client.newCall(req).execute().use { it.body?.string() ?: throw Exception("Empty response") }
+    }
+    val json = JSONObject(body)
+    val tag = json.getString("tag_name")
+    val assets = json.getJSONArray("assets")
+    var apkUrl: String? = null
+    for (i in 0 until assets.length()) {
+        val asset = assets.getJSONObject(i)
+        if (asset.getString("name").endsWith(".apk")) {
+            apkUrl = asset.getString("browser_download_url")
+            break
+        }
+    }
+    if (apkUrl == null) return "No APK found in latest release $tag"
+
+    // Simple version check: if tag contains higher number or just always offer for now
+    // In a real app you'd compare versionCode properly
+    return "New build available: $tag. Download and install from: $apkUrl (open in browser or use system installer)"
 }
 
 @Composable
