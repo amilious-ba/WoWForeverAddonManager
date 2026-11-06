@@ -172,18 +172,39 @@ suspend fun checkForUpdate(context: Context): String {
     val tag = json.getString("tag_name")
     val assets = json.getJSONArray("assets")
     var apkUrl: String? = null
+    var apkName = "WoWForeverAddonManager.apk"
     for (i in 0 until assets.length()) {
         val asset = assets.getJSONObject(i)
-        if (asset.getString("name").endsWith(".apk")) {
+        val name = asset.getString("name")
+        if (name.endsWith(".apk")) {
             apkUrl = asset.getString("browser_download_url")
+            apkName = name
             break
         }
     }
     if (apkUrl == null) return "No APK found in latest release $tag"
 
-    // Simple version check: if tag contains higher number or just always offer for now
-    // In a real app you'd compare versionCode properly
-    return "New build available: $tag. Download and install from: $apkUrl (open in browser or use system installer)"
+    // Download the APK
+    val apkFile = File(context.cacheDir, apkName)
+    withContext(Dispatchers.IO) {
+        val dlReq = Request.Builder().url(apkUrl).build()
+        client.newCall(dlReq).execute().use { resp ->
+            if (!resp.isSuccessful) throw Exception("Download failed: ${resp.code}")
+            resp.body?.byteStream()?.use { input ->
+                FileOutputStream(apkFile).use { output -> input.copyTo(output) }
+            }
+        }
+    }
+
+    // Prompt install via FileProvider
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/vnd.android.package-archive")
+        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+    }
+    context.startActivity(intent)
+
+    return "Update $tag downloaded. Install prompt opened."
 }
 
 @Composable
