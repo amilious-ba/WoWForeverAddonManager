@@ -63,6 +63,7 @@ fun AddonManagerApp() {
                 onPickFolder = { folderPicker.launch(null) },
                 onSearch = { currentScreen = "search" },
                 onInstalled = { currentScreen = "installed" },
+                onBrowse = { currentScreen = "browse" },
                 onInstallFromUrl = { currentScreen = "url" },
                 onAutoDetect = {
                     // Try common path
@@ -91,6 +92,10 @@ fun AddonManagerApp() {
                 onBack = { currentScreen = "home" },
                 context = context
             )
+            "browse" -> BrowseScreen(
+                folderUri = folderUri,
+                onBack = { currentScreen = "home" }
+            )
         }
     }
 }
@@ -103,6 +108,7 @@ fun HomeScreen(
     onPickFolder: () -> Unit,
     onSearch: () -> Unit,
     onInstalled: () -> Unit,
+    onBrowse: () -> Unit,
     onInstallFromUrl: () -> Unit,
     onAutoDetect: () -> Unit,
     context: Context
@@ -113,7 +119,7 @@ fun HomeScreen(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("WoW Forever Addon Manager", style = MaterialTheme.typography.headlineMedium)
-        Text("API key optional. Use Install from URL if you don't have one.", style = MaterialTheme.typography.bodySmall)
+        Text("Browse CurseForge to see and install addons. API key is optional.", style = MaterialTheme.typography.bodySmall)
 
         OutlinedTextField(
             value = apiKey,
@@ -131,14 +137,14 @@ fun HomeScreen(
             Text("Please select the AddOns folder.\nCommon path: /storage/emulated/0/WoW Forever/_forever_/Interface/AddOns", style = MaterialTheme.typography.bodySmall)
         }
 
-        Button(onClick = onSearch, enabled = apiKey.isNotBlank() && folderUri != null, modifier = Modifier.fillMaxWidth()) {
-            Text("Search & Install (API)")
-        }
-        Button(onClick = onInstallFromUrl, enabled = folderUri != null, modifier = Modifier.fillMaxWidth()) {
-            Text("Install from URL (no API)")
+        Button(onClick = onBrowse, enabled = folderUri != null, modifier = Modifier.fillMaxWidth()) {
+            Text("Browse Addons")
         }
         Button(onClick = onInstalled, enabled = folderUri != null, modifier = Modifier.fillMaxWidth()) {
-            Text("Manage Installed")
+            Text("Installed Addons")
+        }
+        Button(onClick = onSearch, enabled = apiKey.isNotBlank() && folderUri != null, modifier = Modifier.fillMaxWidth()) {
+            Text("Search (API)")
         }
 
         Button(
@@ -473,12 +479,14 @@ fun InstalledScreen(folderUri: Uri?, apiKey: String, onBack: () -> Unit, context
     }
     Column {
         Button(onClick = onBack) { Text("Back") }
-        Text("Installed addons (folders found):", style = MaterialTheme.typography.titleMedium)
+        Text("Installed addons:", style = MaterialTheme.typography.titleMedium)
         LazyColumn {
             items(installed) { name ->
-                Text(name)
+                Text(name, Modifier.padding(vertical = 4.dp))
             }
         }
-        Text("Update checking: Compare against CurseForge latest for 1.60.1. Full auto-update scan can be extended.", style = MaterialTheme.typography.bodySmall)
+        if (installed.isEmpty()) {
+            Text("No addon folders found. Browse and install some first.", style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
