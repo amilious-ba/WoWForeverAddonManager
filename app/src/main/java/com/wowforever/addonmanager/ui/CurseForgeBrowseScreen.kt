@@ -18,7 +18,6 @@ import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
-import org.json.JSONObject
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -30,6 +29,7 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
     var status by remember { mutableStateOf<String?>(null) }
     var installedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var showWebView by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(folderUri) {
@@ -64,6 +64,7 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                 loading = true
                 status = null
                 results = emptyList()
+                showWebView = true
                 val searchUrl = "https://www.curseforge.com/wow/addons/search?search=${Uri.encode(query.trim())}"
                 webView?.loadUrl(searchUrl)
             },
@@ -75,51 +76,56 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(color = CurseOrange, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Loading CurseForge results...", color = CurseMuted, style = MaterialTheme.typography.bodySmall)
+                Text("Loading CurseForge... (may take a few seconds)", color = CurseMuted, style = MaterialTheme.typography.bodySmall)
             }
         }
-        status?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        status?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
-        // Hidden WebView for scraping
+        // WebView needs non-zero size to render (especially with Cloudflare)
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36"
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
                             super.onPageFinished(view, url)
-                            if (url?.contains("/search") == true) {
+                            if (url?.contains("/search") == true || url?.contains("curseforge.com") == true) {
                                 scope.launch {
-                                    delay(2500) // wait for JS to render
+                                    delay(4000)
                                     view?.evaluateJavascript(
                                         """
                                         (function() {
-                                            const cards = document.querySelectorAll('[class*="project-card"], [class*="addon-card"], a[href*="/wow/addons/"]');
-                                            const results = [];
-                                            const seen = new Set();
-                                            cards.forEach(el => {
-                                                const link = el.closest('a') || el.querySelector('a') || el;
-                                                const href = link.href || '';
-                                                if (!href.includes('/wow/addons/') || href.includes('/search')) return;
-                                                const slug = href.split('/').filter(Boolean).pop() || '';
-                                                if (seen.has(slug)) return;
-                                                seen.add(slug);
-                                                const nameEl = el.querySelector('h3, h2, [class*="name"], [class*="title"]') || el;
-                                                const name = (nameEl.innerText || nameEl.textContent || slug).trim().split('\n')[0];
-                                                const img = el.querySelector('img');
-                                                const icon = img ? img.src : '';
-                                                const authorEl = el.querySelector('[class*="author"], [class*="creator"]');
-                                                const author = authorEl ? authorEl.innerText.trim() : '';
-                                                results.push({name, slug, icon, author, url: href});
-                                            });
-                                            return JSON.stringify(results.slice(0, 30));
+                                            try {
+                                                const results = [];
+                                                const seen = new Set();
+                                                // Broad selectors for CurseForge project links
+                                                const links = document.querySelectorAll('a[href*="/wow/addons/"]');
+                                                links.forEach(a => {
+                                                    const href = a.href || '';
+                                                    if (!href.includes('/wow/addons/') || href.includes('/search') || href.includes('/files')) return;
+                                                    const parts = href.split('/').filter(Boolean);
+                                                    const slug = parts[parts.length - 1];
+                                                    if (!slug || seen.has(slug) || slug.length < 2) return;
+                                                    seen.add(slug);
+                                                    let name = a.innerText || a.textContent || slug;
+                                                    name = name.trim().split('\n')[0].substring(0, 80);
+                                                    if (name.length < 2) name = slug;
+                                                    const parent = a.closest('div, article, li') || a.parentElement;
+                                                    const img = parent ? parent.querySelector('img') : null;
+                                                    const icon = img ? (img.src || img.getAttribute('data-src') || '') : '';
+                                                    results.push({name, slug, icon, author: '', url: href});
+                                                });
+                                                return JSON.stringify(results.slice(0, 25));
+                                            } catch(e) { return '[]'; }
                                         })();
                                         """.trimIndent()
                                     ) { json ->
                                         try {
-                                            val clean = json?.trim('"')?.replace("\\\"", "\"")?.replace("\\n", "") ?: "[]"
+                                            val clean = json?.removeSurrounding("\"")?.replace("\\\"", "\"")?.replace("\\n", "") ?: "[]"
                                             val arr = JSONArray(clean)
                                             val items = mutableListOf<AddonItem>()
                                             for (i in 0 until arr.length()) {
@@ -127,7 +133,6 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                                 val name = obj.optString("name", "")
                                                 val slug = obj.optString("slug", "")
                                                 val icon = obj.optString("icon", "")
-                                                val author = obj.optString("author", "")
                                                 val projectUrl = obj.optString("url", "")
                                                 if (name.isNotBlank() && slug.isNotBlank()) {
                                                     items.add(
@@ -136,28 +141,34 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                                             name = name,
                                                             version = "latest",
                                                             description = "",
-                                                            downloadUrl = projectUrl, // will be resolved on install
-                                                            author = author,
+                                                            downloadUrl = projectUrl,
+                                                            author = "",
                                                             iconUrl = icon.ifBlank { null }
                                                         )
                                                     )
                                                 }
                                             }
                                             results = items
-                                            status = if (items.isEmpty()) "No results (or page blocked). Try a different search." else null
+                                            status = if (items.isEmpty()) "No results found. Cloudflare may have blocked the page. Try again or use Install from CurseForge URL." else "Found ${items.size} results"
                                         } catch (e: Exception) {
-                                            status = "Failed to parse results"
+                                            status = "Parse error: ${e.message}"
                                         }
                                         loading = false
+                                        showWebView = false
                                     }
                                 }
                             }
+                        }
+
+                        override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                            status = "Page load error: $description"
+                            loading = false
                         }
                     }
                     webView = this
                 }
             },
-            modifier = Modifier.size(0.dp) // hidden
+            modifier = if (showWebView) Modifier.fillMaxWidth().height(1.dp) else Modifier.size(0.dp)
         )
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -176,6 +187,14 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                     isCurseForge = true
                 )
             }
+        }
+
+        if (results.isEmpty() && !loading) {
+            Text(
+                "Search for an addon. If results stay blank, CurseForge may be blocking the scrape.\nUse 'Install from CurseForge URL' as a fallback.",
+                style = MaterialTheme.typography.bodySmall,
+                color = CurseMuted
+            )
         }
     }
 }
