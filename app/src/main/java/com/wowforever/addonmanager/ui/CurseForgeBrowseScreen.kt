@@ -109,12 +109,13 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                             view?.evaluateJavascript(
                                 """
                                 (function() {
-                                    // Hide only known chrome, not project cards
+                                    // Hide bottom Discover/Browse/Search bar and other chrome
                                     const hideSelectors = [
                                         'header', 'footer',
                                         '[class*="site-header"]', '[class*="site-footer"]',
                                         '[class*="mobile-nav"]', '[class*="bottom-nav"]',
-                                        '[class*="tab-bar"]'
+                                        '[class*="tab-bar"]', '[class*="bottom-bar"]',
+                                        '[class*="fixed-bottom"]', '[class*="sticky-bottom"]'
                                     ];
                                     hideSelectors.forEach(sel => {
                                         document.querySelectorAll(sel).forEach(el => {
@@ -122,13 +123,12 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         });
                                     });
 
-                                    // Hide promo / hero by specific text, only if small
-                                    document.querySelectorAll('div, section').forEach(el => {
-                                        if (el.dataset.wfProcessed) return;
+                                    // Hide bottom nav by text
+                                    document.querySelectorAll('div, nav, section').forEach(el => {
                                         const t = (el.innerText || '').toLowerCase();
-                                        const isPromo = (t.includes('browse addons for world of warcraft') || t.includes('10,000+ projects') || t.includes('addon support')) && el.offsetHeight < 400;
-                                        const isFilters = t.includes('filters') && t.includes('sort') && el.children.length < 8 && el.offsetHeight < 120;
-                                        if (isPromo || isFilters) el.style.display = 'none';
+                                        if ((t.includes('discover') && t.includes('browse') && t.includes('search')) && el.offsetHeight < 150) {
+                                            el.style.display = 'none';
+                                        }
                                     });
 
                                     // Sticky search bar at top
@@ -170,7 +170,7 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         a.style.cursor = 'default';
                                     });
 
-                                    // Process project cards
+                                    // Process project cards - buttons at bottom
                                     const links = document.querySelectorAll('a[href*="/wow/addons/"]');
                                     const seen = new Set();
                                     links.forEach(a => {
@@ -187,18 +187,22 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         const name = (a.innerText || slug).trim().split('\n')[0].substring(0, 60);
                                         const installed = window.AddonBridge && window.AddonBridge.isInstalled(name);
 
+                                        // Hide original download buttons
                                         const originals = parent.querySelectorAll('button, a[href*="download"], [class*="download"], [class*="Download"]');
                                         originals.forEach(el => {
                                             el.style.display = 'none';
                                             el.onclick = function(e) { e.preventDefault(); e.stopImmediatePropagation(); return false; };
                                         });
 
+                                        // Buttons at the bottom of the card
                                         if (!parent.querySelector('.wf-actions')) {
                                             const actions = document.createElement('div');
                                             actions.className = 'wf-actions';
-                                            actions.style.cssText = 'display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid #333;';
+                                            actions.style.cssText = 'display:flex;gap:8px;margin-top:12px;padding:8px 0 4px 0;border-top:1px solid #444;';
 
                                             if (installed) {
+                                                // For now show Update only if we can't easily detect version; user wants only when update available
+                                                // We'll show Update for installed so they can force-update if needed
                                                 const upd = document.createElement('button');
                                                 upd.textContent = 'Update';
                                                 upd.style.cssText = 'background:#FF6A00;color:#fff;border:none;padding:8px 16px;border-radius:4px;font-size:14px;flex:1;';
