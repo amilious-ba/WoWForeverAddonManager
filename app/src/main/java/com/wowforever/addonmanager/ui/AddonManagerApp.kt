@@ -217,15 +217,20 @@ suspend fun checkForUpdate(context: Context): String {
         }
     }
 
-    // Prompt install via FileProvider
+    // Prompt install via FileProvider (more reliable flags)
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
     val intent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(uri, "application/vnd.android.package-archive")
-        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
     }
-    context.startActivity(intent)
-
-    return "Update $tag downloaded. Install prompt opened."
+    return try {
+        context.startActivity(intent)
+        "Update $tag downloaded. Install prompt opened."
+    } catch (e: Exception) {
+        "Downloaded but could not open installer: ${e.message}. File is at ${apkFile.absolutePath}"
+    }
 }
 
 @Composable
