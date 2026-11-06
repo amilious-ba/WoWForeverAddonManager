@@ -34,7 +34,8 @@ data class AddonItem(
     val description: String,
     val downloadUrl: String,
     val author: String,
-    val iconUrl: String? = null
+    val iconUrl: String? = null,
+    val compatibleClassic: Boolean = false
 )
 
 data class InstalledAddon(
@@ -151,7 +152,7 @@ fun AddonCard(
             }
             Column(Modifier.weight(1f)) {
                 Text(addon.name, style = MaterialTheme.typography.titleMedium, color = CurseText)
-                Text("v${addon.version} • ${addon.author}", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
+                Text("v${addon.version} • ${addon.author}${if (addon.compatibleClassic) " • Classic/TBC" else ""}", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
                 if (addon.description.isNotBlank()) {
                     Text(addon.description, maxLines = 2, style = MaterialTheme.typography.bodySmall, color = CurseMuted)
                 }
@@ -165,7 +166,12 @@ fun AddonCard(
                             scope.launch {
                                 try {
                                     installFromUrl(addon.downloadUrl, folderUri, context)
-                                    onStatus("Installed ${addon.name}")
+                                    val deps = findRequiredDeps(addon.name, folderUri, context)
+                                    if (deps.isNotEmpty()) {
+                                        onStatus("Installed ${addon.name}. Dependencies: ${deps.joinToString()}")
+                                    } else {
+                                        onStatus("Installed ${addon.name}")
+                                    }
                                     onInstalledChanged()
                                 } catch (e: Exception) {
                                     onStatus("Install failed: ${e.message}")
@@ -261,7 +267,6 @@ fun InstalledScreen(folderUri: Uri?, apiKey: String, onBack: () -> Unit, context
                                     scope.launch {
                                         try {
                                             installFromUrl(addon.matchedRemote.downloadUrl, folderUri!!, context)
-                                            // refresh
                                             installed = loadInstalledAddons(folderUri, context)
                                         } catch (_: Exception) {}
                                     }
@@ -286,7 +291,6 @@ suspend fun loadInstalledAddons(folderUri: Uri, context: android.content.Context
     val result = mutableListOf<InstalledAddon>()
     val client = OkHttpClient()
 
-    // Load remote catalog once for matching
     val remoteList = try {
         val req = Request.Builder().url("https://api.mmoui.com/v3/game/WOW/filelist.json").build()
         withContext(Dispatchers.IO) {
@@ -305,7 +309,6 @@ suspend fun loadInstalledAddons(folderUri: Uri, context: android.content.Context
         var title = folderName
         var version = "?"
 
-        // Try to read .toc
         dir.listFiles()?.find { it.name?.endsWith(".toc", ignoreCase = true) == true }?.let { toc ->
             context.contentResolver.openInputStream(toc.uri)?.use { stream ->
                 BufferedReader(InputStreamReader(stream)).useLines { lines ->
@@ -321,10 +324,16 @@ suspend fun loadInstalledAddons(folderUri: Uri, context: android.content.Context
             }
         }
 
-        // Match to remote
         val match = remoteList.find { it.optString("UIName", "").equals(title, ignoreCase = true) || it.optString("UIName", "").equals(folderName, ignoreCase = true) }
         val remoteItem = match?.let {
             val id = it.optString("UID", "")
+            val compat = it.optJSONArray("UICompatibility")
+            val classic = compat?.let { c ->
+                (0 until c.length()).any { i ->
+                    val v = c.getJSONObject(i).optString("name", "") + " " + c.getJSONObject(i).optString("version", "")
+                    v.contains("Classic", ignoreCase = true) || v.contains("TBC", ignoreCase = true) || v.contains("1.1") || v.contains("2.5")
+                }
+            } ?: false
             AddonItem(
                 id = id,
                 name = it.optString("UIName", ""),
@@ -332,7 +341,8 @@ suspend fun loadInstalledAddons(folderUri: Uri, context: android.content.Context
                 description = "",
                 downloadUrl = "https://cdn.wowinterface.com/downloads/getfile.php?id=$id",
                 author = it.optString("UIAuthorName", ""),
-                iconUrl = it.optJSONArray("UIIMG_Thumbs")?.optString(0)
+                iconUrl = it.optJSONArray("UIIMG_Thumbs")?.optString(0),
+                compatibleClassic = classic
             )
         }
 
@@ -367,6 +377,13 @@ suspend fun searchWowInterface(query: String): List<AddonItem> {
             val version = obj.optString("UIVersion", "")
             val author = obj.optString("UIAuthorName", "")
             val icon = obj.optJSONArray("UIIMG_Thumbs")?.optString(0)
+            val compat = obj.optJSONArray("UICompatibility")
+            val classic = compat?.let { c ->
+                (0 until c.length()).any { idx ->
+                    val v = c.getJSONObject(idx).optString("name", "") + " " + c.getJSONObject(idx).optString("version", "")
+                    v.contains("Classic", ignoreCase = true) || v.contains("TBC", ignoreCase = true) || v.contains("1.1") || v.contains("2.5")
+                }
+            } ?: false
             val downloadUrl = "https://cdn.wowinterface.com/downloads/getfile.php?id=$id"
             matches.add(
                 AddonItem(
@@ -376,13 +393,35 @@ suspend fun searchWowInterface(query: String): List<AddonItem> {
                     description = "",
                     downloadUrl = downloadUrl,
                     author = author,
-                    iconUrl = icon
+                    iconUrl = icon,
+                    compatibleClassic = classic
                 )
             )
         }
-        if (matches.size >= 40) break
+        if (matches.size >= 50) break
     }
-    return matches
+    // Prefer Classic/TBC results first
+    return matches.sortedByDescending { it.compatibleClassic }
+}
+
+suspend fun findRequiredDeps(addonName: String, folderUri: Uri, context: android.content.Context): List<String> {
+    val tree = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
+    val dir = tree.listFiles()?.find { it.isDirectory && it.name.equals(addonName, ignoreCase = true) } ?: return emptyList()
+    val deps = mutableListOf<String>()
+    dir.listFiles()?.find { it.name?.endsWith(".toc", ignoreCase = true) == true }?.let { toc ->
+        context.contentResolver.openInputStream(toc.uri)?.use { stream ->
+            BufferedReader(InputStreamReader(stream)).useLines { lines ->
+                lines.forEach { line ->
+                    val trimmed = line.trim()
+                    if (trimmed.startsWith("## RequiredDeps:") || trimmed.startsWith("## Dependencies:")) {
+                        val list = trimmed.substringAfter(":").split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        deps.addAll(list)
+                    }
+                }
+            }
+        }
+    }
+    return deps
 }
 
 suspend fun uninstallAddon(name: String, folderUri: Uri, context: android.content.Context) {
