@@ -55,6 +55,7 @@ fun AddonManagerApp() {
                 onInstalled = { currentScreen = "installed" },
                 onBrowse = { currentScreen = "browse" },
                 onInstallFromUrl = { currentScreen = "url" },
+                onCurseForge = { currentScreen = "curseforge" },
                 context = context
             )
             "installed" -> InstalledScreen(
@@ -64,6 +65,11 @@ fun AddonManagerApp() {
                 context = context
             )
             "url" -> UrlInstallScreen(
+                folderUri = folderUri,
+                onBack = { currentScreen = "home" },
+                context = context
+            )
+            "curseforge" -> CurseForgeInstallScreen(
                 folderUri = folderUri,
                 onBack = { currentScreen = "home" },
                 context = context
@@ -83,6 +89,7 @@ fun HomeScreen(
     onInstalled: () -> Unit,
     onBrowse: () -> Unit,
     onInstallFromUrl: () -> Unit,
+    onCurseForge: () -> Unit,
     context: Context
 ) {
     var updateMessage by remember { mutableStateOf<String?>(null) }
@@ -91,7 +98,7 @@ fun HomeScreen(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("WoW Forever Addon Manager", style = MaterialTheme.typography.headlineMedium, color = CurseText)
-        Text("Browse and install addons from WoWInterface.", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
+        Text("Browse and install addons from WoWInterface or CurseForge.", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
 
         Button(onClick = onPickFolder, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text(if (folderUri != null) "Change AddOns Folder" else "Select AddOns Folder")
@@ -108,8 +115,11 @@ fun HomeScreen(
         Button(onClick = onInstalled, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text("Installed Addons")
         }
+        Button(onClick = onCurseForge, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
+            Text("Install from CurseForge URL")
+        }
         Button(onClick = onInstallFromUrl, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF555555))) {
-            Text("Install from URL")
+            Text("Install from Zip URL")
         }
 
         Button(
