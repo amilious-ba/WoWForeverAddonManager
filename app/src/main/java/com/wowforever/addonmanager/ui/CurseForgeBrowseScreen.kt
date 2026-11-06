@@ -2,11 +2,10 @@ package com.wowforever.addonmanager.ui
 
 import android.annotation.SuppressLint
 import android.net.Uri
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,21 +14,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.json.JSONArray
+import kotlinx.coroutines.withContext
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
     val context = LocalContext.current
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<AddonItem>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
+    var webView by remember { mutableStateOf<WebView?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var installedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var webView by remember { mutableStateOf<WebView?>(null) }
-    var showWebView by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(folderUri) {
@@ -39,49 +34,21 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text("Back") }
-            Spacer(Modifier.width(8.dp))
-            Text("Browse CurseForge", style = MaterialTheme.typography.titleLarge, color = CurseText)
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            label = { Text("Search addons") },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = CurseOrange,
-                unfocusedBorderColor = CurseMuted,
-                focusedLabelColor = CurseOrange,
-                cursorColor = CurseOrange
-            )
-        )
-        Button(
-            onClick = {
-                if (query.isBlank() || webView == null) return@Button
-                loading = true
-                status = null
-                results = emptyList()
-                showWebView = true
-                val searchUrl = "https://www.curseforge.com/wow/addons/search?search=${Uri.encode(query.trim())}"
-                webView?.loadUrl(searchUrl)
-            },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)
-        ) { Text("Search") }
-
-        if (loading) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = CurseOrange, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Loading CurseForge... (may take a few seconds)", color = CurseMuted, style = MaterialTheme.typography.bodySmall)
+    Column(Modifier.fillMaxSize()) {
+        // Top bar with Back and status
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
+                Text("Back")
             }
+            Spacer(Modifier.width(8.dp))
+            Text("CurseForge", style = MaterialTheme.typography.titleMedium, color = CurseText)
+            Spacer(Modifier.weight(1f))
+            status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = CurseMuted) }
         }
-        status?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
-        // WebView needs non-zero size to render (especially with Cloudflare)
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
@@ -90,111 +57,133 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                     settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36"
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            if (url?.contains("/search") == true || url?.contains("curseforge.com") == true) {
-                                scope.launch {
-                                    delay(4000)
-                                    view?.evaluateJavascript(
-                                        """
-                                        (function() {
-                                            try {
-                                                const results = [];
-                                                const seen = new Set();
-                                                // Broad selectors for CurseForge project links
-                                                const links = document.querySelectorAll('a[href*="/wow/addons/"]');
-                                                links.forEach(a => {
-                                                    const href = a.href || '';
-                                                    if (!href.includes('/wow/addons/') || href.includes('/search') || href.includes('/files')) return;
-                                                    const parts = href.split('/').filter(Boolean);
-                                                    const slug = parts[parts.length - 1];
-                                                    if (!slug || seen.has(slug) || slug.length < 2) return;
-                                                    seen.add(slug);
-                                                    let name = a.innerText || a.textContent || slug;
-                                                    name = name.trim().split('\n')[0].substring(0, 80);
-                                                    if (name.length < 2) name = slug;
-                                                    const parent = a.closest('div, article, li') || a.parentElement;
-                                                    const img = parent ? parent.querySelector('img') : null;
-                                                    const icon = img ? (img.src || img.getAttribute('data-src') || '') : '';
-                                                    results.push({name, slug, icon, author: '', url: href});
-                                                });
-                                                return JSON.stringify(results.slice(0, 25));
-                                            } catch(e) { return '[]'; }
-                                        })();
-                                        """.trimIndent()
-                                    ) { json ->
-                                        try {
-                                            val clean = json?.removeSurrounding("\"")?.replace("\\\"", "\"")?.replace("\\n", "") ?: "[]"
-                                            val arr = JSONArray(clean)
-                                            val items = mutableListOf<AddonItem>()
-                                            for (i in 0 until arr.length()) {
-                                                val obj = arr.getJSONObject(i)
-                                                val name = obj.optString("name", "")
-                                                val slug = obj.optString("slug", "")
-                                                val icon = obj.optString("icon", "")
-                                                val projectUrl = obj.optString("url", "")
-                                                if (name.isNotBlank() && slug.isNotBlank()) {
-                                                    items.add(
-                                                        AddonItem(
-                                                            id = slug,
-                                                            name = name,
-                                                            version = "latest",
-                                                            description = "",
-                                                            downloadUrl = projectUrl,
-                                                            author = "",
-                                                            iconUrl = icon.ifBlank { null }
-                                                        )
-                                                    )
-                                                }
-                                            }
-                                            results = items
-                                            status = if (items.isEmpty()) "No results found. Cloudflare may have blocked the page. Try again or use Install from CurseForge URL." else "Found ${items.size} results"
-                                        } catch (e: Exception) {
-                                            status = "Parse error: ${e.message}"
-                                        }
-                                        loading = false
-                                        showWebView = false
+                    addJavascriptInterface(object {
+                        @JavascriptInterface
+                        fun onInstall(projectUrl: String, name: String) {
+                            scope.launch {
+                                status = "Installing $name..."
+                                try {
+                                    if (folderUri == null) {
+                                        status = "Select AddOns folder first"
+                                        return@launch
                                     }
+                                    val info = fetchCurseForgeInfo(projectUrl)
+                                    installFromUrl(info.downloadUrl, folderUri, context)
+                                    injectProjectId(info.projectId, info.slug, folderUri, context)
+                                    status = "Installed $name"
+                                    // Refresh installed list
+                                    val tree = DocumentFile.fromTreeUri(context, folderUri)
+                                    installedFolders = tree?.listFiles()?.filter { it.isDirectory }?.mapNotNull { it.name }?.toSet() ?: emptySet()
+                                } catch (e: Exception) {
+                                    status = "Install failed: ${e.message}"
                                 }
                             }
                         }
 
-                        override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
-                            status = "Page load error: $description"
-                            loading = false
+                        @JavascriptInterface
+                        fun onUninstall(name: String) {
+                            scope.launch {
+                                status = "Uninstalling $name..."
+                                try {
+                                    if (folderUri == null) return@launch
+                                    uninstallAddon(name, folderUri, context)
+                                    status = "Uninstalled $name"
+                                    val tree = DocumentFile.fromTreeUri(context, folderUri)
+                                    installedFolders = tree?.listFiles()?.filter { it.isDirectory }?.mapNotNull { it.name }?.toSet() ?: emptySet()
+                                } catch (e: Exception) {
+                                    status = "Uninstall failed: ${e.message}"
+                                }
+                            }
+                        }
+
+                        @JavascriptInterface
+                        fun isInstalled(name: String): Boolean {
+                            return installedFolders.any { it.equals(name, ignoreCase = true) }
+                        }
+                    }, "AddonBridge")
+
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            // Inject UI modifications
+                            view?.evaluateJavascript(
+                                """
+                                (function() {
+                                    // Add a simple top search if not present
+                                    if (!document.getElementById('wf-search')) {
+                                        const bar = document.createElement('div');
+                                        bar.id = 'wf-search';
+                                        bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#1a1a1a;padding:8px;display:flex;gap:8px;';
+                                        bar.innerHTML = '<input id="wf-q" placeholder="Search addons" style="flex:1;padding:8px;background:#222;color:#fff;border:1px solid #FF6A00;border-radius:4px;" /><button id="wf-go" style="background:#FF6A00;color:#fff;border:none;padding:8px 12px;border-radius:4px;">Search</button>';
+                                        document.body.prepend(bar);
+                                        document.getElementById('wf-go').onclick = function() {
+                                            const q = document.getElementById('wf-q').value.trim();
+                                            if (q) window.location.href = 'https://www.curseforge.com/wow/addons/search?search=' + encodeURIComponent(q);
+                                        };
+                                        document.getElementById('wf-q').addEventListener('keydown', function(e) {
+                                            if (e.key === 'Enter') document.getElementById('wf-go').click();
+                                        });
+                                    }
+
+                                    // Rewrite download / install buttons
+                                    const links = document.querySelectorAll('a[href*="/wow/addons/"]');
+                                    const seen = new Set();
+                                    links.forEach(a => {
+                                        const href = a.href || '';
+                                        if (!href.includes('/wow/addons/') || href.includes('/search')) return;
+                                        const slug = href.split('/').filter(Boolean).pop();
+                                        if (!slug || seen.has(slug)) return;
+                                        seen.add(slug);
+
+                                        // Find nearby download-like buttons
+                                        const parent = a.closest('div, article, li, section') || a.parentElement;
+                                        if (!parent) return;
+                                        const buttons = parent.querySelectorAll('button, a[href*="download"], [class*="download"], [class*="install"]');
+                                        buttons.forEach(btn => {
+                                            if (btn.dataset.wfHooked) return;
+                                            btn.dataset.wfHooked = '1';
+                                            const name = (a.innerText || slug).trim().split('\n')[0];
+                                            const installed = window.AddonBridge && window.AddonBridge.isInstalled(name);
+                                            if (installed) {
+                                                btn.textContent = 'Update';
+                                                btn.onclick = function(e) {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    window.AddonBridge.onInstall(href, name);
+                                                };
+                                                // Add uninstall
+                                                if (!parent.querySelector('.wf-uninstall')) {
+                                                    const u = document.createElement('button');
+                                                    u.className = 'wf-uninstall';
+                                                    u.textContent = 'Uninstall';
+                                                    u.style.cssText = 'margin-left:6px;background:#555;color:#fff;border:none;padding:6px 10px;border-radius:4px;';
+                                                    u.onclick = function(e) {
+                                                        e.preventDefault();
+                                                        window.AddonBridge.onUninstall(name);
+                                                    };
+                                                    btn.parentElement.appendChild(u);
+                                                }
+                                            } else {
+                                                btn.textContent = 'Install';
+                                                btn.onclick = function(e) {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    window.AddonBridge.onInstall(href, name);
+                                                };
+                                            }
+                                        });
+                                    });
+                                })();
+                                """.trimIndent(),
+                                null
+                            )
                         }
                     }
+                    loadUrl("https://www.curseforge.com/wow/addons")
                     webView = this
                 }
             },
-            modifier = if (showWebView) Modifier.fillMaxWidth().height(1.dp) else Modifier.size(0.dp)
+            modifier = Modifier.fillMaxSize()
         )
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(results) { addon ->
-                AddonCard(
-                    addon = addon,
-                    isInstalled = installedFolders.any { it.equals(addon.name, ignoreCase = true) || it.equals(addon.id, ignoreCase = true) },
-                    folderUri = folderUri,
-                    onStatus = { status = it },
-                    onInstalledChanged = {
-                        folderUri?.let { uri ->
-                            val tree = DocumentFile.fromTreeUri(context, uri)
-                            installedFolders = tree?.listFiles()?.filter { it.isDirectory }?.mapNotNull { it.name }?.toSet() ?: emptySet()
-                        }
-                    },
-                    isCurseForge = true
-                )
-            }
-        }
-
-        if (results.isEmpty() && !loading) {
-            Text(
-                "Search for an addon. If results stay blank, CurseForge may be blocking the scrape.\nUse 'Install from CurseForge URL' as a fallback.",
-                style = MaterialTheme.typography.bodySmall,
-                color = CurseMuted
-            )
-        }
     }
 }
