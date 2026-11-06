@@ -19,21 +19,25 @@ class CurseForgeApi(private val apiKey: String) {
     private val gameVersion = "1.60.1" // WoW Forever
 
     private fun request(url: String): String {
+        if (apiKey.isBlank()) throw Exception("API key is empty. Get one at console.curseforge.com")
         val req = Request.Builder()
             .url(url)
-            .header("x-api-key", apiKey)
+            .header("x-api-key", apiKey.trim())
             .header("Accept", "application/json")
             .build()
         client.newCall(req).execute().use { response ->
             if (!response.isSuccessful) {
-                throw Exception("API error ${response.code}: ${response.body?.string()}")
+                val errBody = response.body?.string() ?: ""
+                throw Exception("API error ${response.code}: $errBody. Check your API key at console.curseforge.com (must be valid and have WoW access).")
             }
             return response.body?.string() ?: throw Exception("Empty body")
         }
     }
 
     fun searchMods(query: String, page: Int = 0, pageSize: Int = 20): ModSearchResponse {
-        val url = "$baseUrl/mods/search?gameId=$gameId&searchFilter=${java.net.URLEncoder.encode(query, "UTF-8")}&gameVersion=$gameVersion&index=${page * pageSize}&pageSize=$pageSize&sortField=2&sortOrder=desc"
+        // Try with gameVersion first; if it fails the caller will see the error
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val url = "$baseUrl/mods/search?gameId=$gameId&searchFilter=$encoded&gameVersion=$gameVersion&index=${page * pageSize}&pageSize=$pageSize&sortField=2&sortOrder=desc"
         val body = request(url)
         return json.decodeFromString(body)
     }
