@@ -26,7 +26,6 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
     var installedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
     val scope = rememberCoroutineScope()
 
-    // System back button returns to menu instead of minimizing
     BackHandler(enabled = true) {
         onBack()
     }
@@ -110,16 +109,12 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                             view?.evaluateJavascript(
                                 """
                                 (function() {
-                                    // Hide CurseForge chrome, promo, filters, pagination
+                                    // Hide only known chrome, not project cards
                                     const hideSelectors = [
-                                        'header', 'footer', 'nav',
-                                        '[class*="header"]', '[class*="footer"]', '[class*="nav"]',
-                                        '[class*="bottom"]', '[class*="tab-bar"]', '[class*="toolbar"]',
-                                        '[class*="mobile-nav"]', '[class*="app-nav"]',
-                                        '[class*="banner"]', '[class*="promo"]', '[class*="hero"]',
-                                        '[class*="filter"]', '[class*="sort"]',
-                                        '[class*="pagination"]', '[class*="pager"]',
-                                        '[class*="breadcrumb"]'
+                                        'header', 'footer',
+                                        '[class*="site-header"]', '[class*="site-footer"]',
+                                        '[class*="mobile-nav"]', '[class*="bottom-nav"]',
+                                        '[class*="tab-bar"]'
                                     ];
                                     hideSelectors.forEach(sel => {
                                         document.querySelectorAll(sel).forEach(el => {
@@ -127,10 +122,13 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         });
                                     });
 
-                                    document.querySelectorAll('div, section, aside').forEach(el => {
+                                    // Hide promo / hero by specific text, only if small
+                                    document.querySelectorAll('div, section').forEach(el => {
+                                        if (el.dataset.wfProcessed) return;
                                         const t = (el.innerText || '').toLowerCase();
-                                        if (t.includes('filters') && t.includes('sort') && el.children.length < 5) el.style.display = 'none';
-                                        if (t.includes('browse addons for') || t.includes('10,000+ projects') || t.includes('addon support')) el.style.display = 'none';
+                                        const isPromo = (t.includes('browse addons for world of warcraft') || t.includes('10,000+ projects') || t.includes('addon support')) && el.offsetHeight < 400;
+                                        const isFilters = t.includes('filters') && t.includes('sort') && el.children.length < 8 && el.offsetHeight < 120;
+                                        if (isPromo || isFilters) el.style.display = 'none';
                                     });
 
                                     // Sticky search bar at top
@@ -160,7 +158,7 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         });
                                     }
 
-                                    // Disable navigation on addon links so clicking the card doesn't leave the page
+                                    // Disable navigation on addon links
                                     document.querySelectorAll('a[href*="/wow/addons/"]').forEach(a => {
                                         const href = a.href || '';
                                         if (href.includes('/search') || href.includes('/files')) return;
