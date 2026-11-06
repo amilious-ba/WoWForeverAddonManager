@@ -5,6 +5,7 @@ import android.net.Uri
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +25,11 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
     var status by remember { mutableStateOf<String?>(null) }
     var installedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
     val scope = rememberCoroutineScope()
+
+    // System back button returns to menu instead of minimizing
+    BackHandler(enabled = true) {
+        onBack()
+    }
 
     LaunchedEffect(folderUri) {
         folderUri?.let { uri ->
@@ -135,7 +141,6 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                         bar.innerHTML = '<input id="wf-q" placeholder="Search addons" style="flex:1;padding:8px;background:#222;color:#fff;border:1px solid #FF6A00;border-radius:4px;" /><button id="wf-go" style="background:#FF6A00;color:#fff;border:none;padding:8px 12px;border-radius:4px;">Search</button>';
                                         document.body.prepend(bar);
 
-                                        // Pre-fill from current URL if searching
                                         try {
                                             const params = new URLSearchParams(window.location.search);
                                             const existing = params.get('search') || '';
@@ -154,6 +159,18 @@ fun CurseForgeBrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
                                             if (e.key === 'Enter') document.getElementById('wf-go').click();
                                         });
                                     }
+
+                                    // Disable navigation on addon links so clicking the card doesn't leave the page
+                                    document.querySelectorAll('a[href*="/wow/addons/"]').forEach(a => {
+                                        const href = a.href || '';
+                                        if (href.includes('/search') || href.includes('/files')) return;
+                                        a.onclick = function(e) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            return false;
+                                        };
+                                        a.style.cursor = 'default';
+                                    });
 
                                     // Process project cards
                                     const links = document.querySelectorAll('a[href*="/wow/addons/"]');
