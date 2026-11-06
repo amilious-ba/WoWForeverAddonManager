@@ -118,33 +118,39 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("WoW Forever Addon Manager", style = MaterialTheme.typography.headlineMedium)
-        Text("Browse CurseForge to see and install addons. API key is optional.", style = MaterialTheme.typography.bodySmall)
+        Text("WoW Forever Addon Manager", style = MaterialTheme.typography.headlineMedium, color = CurseText)
+        Text("Browse addons from WoWInterface. API key is optional.", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
 
         OutlinedTextField(
             value = apiKey,
             onValueChange = onApiKeyChange,
             label = { Text("CurseForge API Key (optional)") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = CurseOrange,
+                unfocusedBorderColor = CurseMuted,
+                focusedLabelColor = CurseOrange,
+                cursorColor = CurseOrange
+            )
         )
 
-        Button(onClick = onPickFolder, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = onPickFolder, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text(if (folderUri != null) "Change AddOns Folder" else "Select AddOns Folder")
         }
         if (folderUri != null) {
-            Text("Folder selected", style = MaterialTheme.typography.bodySmall)
+            Text("Folder selected", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
         } else {
-            Text("Please select the AddOns folder.\nCommon path: /storage/emulated/0/WoW Forever/_forever_/Interface/AddOns", style = MaterialTheme.typography.bodySmall)
+            Text("Please select the AddOns folder.\nCommon path: /storage/emulated/0/WoW Forever/_forever_/Interface/AddOns", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
         }
 
-        Button(onClick = onBrowse, enabled = folderUri != null, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = onBrowse, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text("Browse Addons")
         }
-        Button(onClick = onInstalled, enabled = folderUri != null, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = onInstalled, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text("Installed Addons")
         }
-        Button(onClick = onSearch, enabled = apiKey.isNotBlank() && folderUri != null, modifier = Modifier.fillMaxWidth()) {
-            Text("Search (API)")
+        Button(onClick = onSearch, enabled = apiKey.isNotBlank() && folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF555555))) {
+            Text("Search (CurseForge API)")
         }
 
         Button(
@@ -162,11 +168,12 @@ fun HomeScreen(
                 }
             },
             enabled = !checkingUpdate,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)
         ) {
             Text(if (checkingUpdate) "Checking..." else "Check for App Updates")
         }
-        updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = CurseMuted) }
     }
 }
 
@@ -242,16 +249,22 @@ fun UrlInstallScreen(folderUri: Uri?, onBack: () -> Unit, context: Context) {
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onBack) { Text("Back") }
+            Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text("Back") }
             Spacer(Modifier.width(8.dp))
-            Text("Install from URL", style = MaterialTheme.typography.titleMedium)
+            Text("Install from URL", style = MaterialTheme.typography.titleMedium, color = CurseText)
         }
-        Text("Paste a direct .zip download link (from CurseForge, GitHub, WowInterface, etc.).", style = MaterialTheme.typography.bodySmall)
+        Text("Paste a direct .zip download link (from CurseForge, GitHub, WowInterface, etc.).", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
             label = { Text("Addon .zip URL") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = CurseOrange,
+                unfocusedBorderColor = CurseMuted,
+                focusedLabelColor = CurseOrange,
+                cursorColor = CurseOrange
+            )
         )
         Button(
             onClick = {
@@ -269,11 +282,12 @@ fun UrlInstallScreen(folderUri: Uri?, onBack: () -> Unit, context: Context) {
                 }
             },
             enabled = !busy && url.isNotBlank() && folderUri != null,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)
         ) {
             Text(if (busy) "Installing..." else "Download & Install")
         }
-        status?.let { Text(it) }
+        status?.let { Text(it, color = CurseText) }
     }
 }
 
@@ -336,13 +350,19 @@ fun SearchScreen(apiKey: String, folderUri: Uri?, onBack: () -> Unit, context: C
 
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onBack) { Text("Back") }
+            Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text("Back") }
             Spacer(Modifier.width(8.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 label = { Text("Search addons") },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = CurseOrange,
+                    unfocusedBorderColor = CurseMuted,
+                    focusedLabelColor = CurseOrange,
+                    cursorColor = CurseOrange
+                )
             )
             Button(onClick = {
                 if (query.isBlank()) return@Button
@@ -358,9 +378,9 @@ fun SearchScreen(apiKey: String, folderUri: Uri?, onBack: () -> Unit, context: C
                     }
                     loading = false
                 }
-            }) { Text("Search") }
+            }, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text("Search") }
         }
-        if (loading) CircularProgressIndicator()
+        if (loading) CircularProgressIndicator(color = CurseOrange)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         LazyColumn {
             items(results) { mod ->
@@ -377,11 +397,11 @@ fun ModCard(mod: Mod, apiKey: String, folderUri: Uri?, context: Context) {
     var installing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = CurseCard)) {
         Column(Modifier.padding(12.dp)) {
-            Text(mod.name, style = MaterialTheme.typography.titleMedium)
-            Text(mod.summary, maxLines = 2, style = MaterialTheme.typography.bodySmall)
-            Text("${mod.downloadCount} downloads", style = MaterialTheme.typography.bodySmall)
+            Text(mod.name, style = MaterialTheme.typography.titleMedium, color = CurseText)
+            Text(mod.summary, maxLines = 2, style = MaterialTheme.typography.bodySmall, color = CurseMuted)
+            Text("${mod.downloadCount} downloads", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
             Button(onClick = {
                 expanded = !expanded
                 if (expanded && files.isEmpty()) {
@@ -392,12 +412,12 @@ fun ModCard(mod: Mod, apiKey: String, folderUri: Uri?, context: Context) {
                         } catch (e: Exception) { /* ignore */ }
                     }
                 }
-            }) { Text(if (expanded) "Hide files" else "Show files / Install") }
+            }, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text(if (expanded) "Hide files" else "Show files / Install") }
 
             if (expanded) {
                 files.take(5).forEach { file ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${file.displayName} (${file.fileName})", modifier = Modifier.weight(1f))
+                        Text("${file.displayName} (${file.fileName})", modifier = Modifier.weight(1f), color = CurseText)
                         Button(
                             onClick = {
                                 installing = true
@@ -408,11 +428,12 @@ fun ModCard(mod: Mod, apiKey: String, folderUri: Uri?, context: Context) {
                                     installing = false
                                 }
                             },
-                            enabled = !installing && folderUri != null
+                            enabled = !installing && folderUri != null,
+                            colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)
                         ) { Text("Install") }
                     }
                 }
-                if (installing) CircularProgressIndicator()
+                if (installing) CircularProgressIndicator(color = CurseOrange)
             }
         }
     }
@@ -471,27 +492,4 @@ suspend fun installMod(apiKey: String, modId: Int, file: ModFile, folderUri: Uri
         }
     }
     tempFile.delete()
-}
-
-@Composable
-fun InstalledScreen(folderUri: Uri?, apiKey: String, onBack: () -> Unit, context: Context) {
-    var installed by remember { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(folderUri) {
-        folderUri?.let { uri ->
-            val tree = DocumentFile.fromTreeUri(context, uri)
-            installed = tree?.listFiles()?.filter { it.isDirectory }?.map { it.name ?: "" } ?: emptyList()
-        }
-    }
-    Column {
-        Button(onClick = onBack) { Text("Back") }
-        Text("Installed addons:", style = MaterialTheme.typography.titleMedium)
-        LazyColumn {
-            items(installed) { name ->
-                Text(name, Modifier.padding(vertical = 4.dp))
-            }
-        }
-        if (installed.isEmpty()) {
-            Text("No addon folders found. Browse and install some first.", style = MaterialTheme.typography.bodySmall)
-        }
-    }
 }
