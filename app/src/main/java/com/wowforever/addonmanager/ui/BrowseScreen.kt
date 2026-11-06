@@ -67,7 +67,7 @@ fun BrowseScreen(folderUri: Uri?, onBack: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text("Back") }
             Spacer(Modifier.width(8.dp))
-            Text("Browse Addons", style = MaterialTheme.typography.titleLarge, color = CurseText)
+            Text("Browse WowInterface", style = MaterialTheme.typography.titleLarge, color = CurseText)
         }
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
@@ -129,7 +129,8 @@ fun AddonCard(
     isInstalled: Boolean,
     folderUri: Uri?,
     onStatus: (String) -> Unit,
-    onInstalledChanged: () -> Unit
+    onInstalledChanged: () -> Unit,
+    isCurseForge: Boolean = false
 ) {
     val context = LocalContext.current
     var busy by remember { mutableStateOf(false) }
@@ -165,7 +166,13 @@ fun AddonCard(
                             busy = true
                             scope.launch {
                                 try {
-                                    installFromUrl(addon.downloadUrl, folderUri, context)
+                                    if (isCurseForge) {
+                                        val info = fetchCurseForgeInfo(addon.downloadUrl)
+                                        installFromUrl(info.downloadUrl, folderUri, context)
+                                        injectProjectId(info.projectId, info.slug, folderUri, context)
+                                    } else {
+                                        installFromUrl(addon.downloadUrl, folderUri, context)
+                                    }
                                     val deps = findRequiredDeps(addon.name, folderUri, context)
                                     if (deps.isNotEmpty()) {
                                         onStatus("Installed ${addon.name}. Dependencies: ${deps.joinToString()}")
@@ -208,7 +215,12 @@ fun AddonCard(
                             busy = true
                             scope.launch {
                                 try {
-                                    installFromUrl(addon.downloadUrl, folderUri, context)
+                                    if (isCurseForge) {
+                                        val info = fetchCurseForgeInfo(addon.downloadUrl)
+                                        installFromUrl(info.downloadUrl, folderUri, context)
+                                    } else {
+                                        installFromUrl(addon.downloadUrl, folderUri, context)
+                                    }
                                     onStatus("Updated ${addon.name}")
                                     onInstalledChanged()
                                 } catch (e: Exception) {
@@ -400,7 +412,6 @@ suspend fun searchWowInterface(query: String): List<AddonItem> {
         }
         if (matches.size >= 50) break
     }
-    // Prefer Classic/TBC results first
     return matches.sortedByDescending { it.compatibleClassic }
 }
 
