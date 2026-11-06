@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
@@ -131,7 +132,6 @@ suspend fun fetchCurseForgeInfo(projectUrl: String): CurseInfo {
 
 suspend fun injectProjectId(projectId: Int, slug: String, folderUri: Uri, context: Context) {
     val tree = DocumentFile.fromTreeUri(context, folderUri) ?: return
-    // Find the newly installed folder (heuristic: most recently modified, or match slug)
     val dirs = tree.listFiles()?.filter { it.isDirectory } ?: return
     val target = dirs.find { it.name.equals(slug, ignoreCase = true) } ?: dirs.maxByOrNull { it.lastModified() } ?: return
 
