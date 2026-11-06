@@ -160,6 +160,10 @@ fun HomeScreen(
 }
 
 suspend fun checkForUpdate(context: Context): String {
+    val pm = context.packageManager
+    val info = pm.getPackageInfo(context.packageName, 0)
+    val currentVersion = info.versionName ?: "1.0"
+
     val client = OkHttpClient()
     val req = Request.Builder()
         .url("https://api.github.com/repos/amilious-ba/WoWForeverAddonManager/releases/latest")
@@ -169,7 +173,13 @@ suspend fun checkForUpdate(context: Context): String {
         client.newCall(req).execute().use { it.body?.string() ?: throw Exception("Empty response") }
     }
     val json = JSONObject(body)
-    val tag = json.getString("tag_name")
+    val tag = json.getString("tag_name") // e.g. v1.0-17
+    val latestVersion = tag.removePrefix("v").substringBefore("-")
+
+    if (latestVersion <= currentVersion) {
+        return "You are up to date (v$currentVersion). Latest is $tag."
+    }
+
     val assets = json.getJSONArray("assets")
     var apkUrl: String? = null
     var apkName = "WoWForeverAddonManager.apk"
