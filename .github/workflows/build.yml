@@ -39,7 +39,7 @@ jobs:
       - name: Rename APK
         run: |
           mv app/build/outputs/apk/debug/app-debug.apk \
-             app/build/outputs/apk/debug/WoWForeverAddonManager-v${{ steps.version.outputs.version }}-${{ github.run_number }}.apk
+             app/build/outputs/apk/debug/WoWForeverAddonManager.apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -47,7 +47,7 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
           name: WoW Forever Addon Manager ${{ steps.version.outputs.version }} (build ${{ github.run_number }})
           body: Manual build from commit ${{ github.sha }}
-          files: app/build/outputs/apk/debug/WoWForeverAddonManager-v${{ steps.version.outputs.version }}-${{ github.run_number }}.apk
+          files: app/build/outputs/apk/debug/WoWForeverAddonManager.apk
           draft: false
           prerelease: false
         env:
