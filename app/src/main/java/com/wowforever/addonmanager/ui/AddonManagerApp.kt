@@ -1,6 +1,5 @@
 package com.wowforever.addonmanager.ui
 
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -10,8 +9,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,10 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
-import com.wowforever.addonmanager.api.CurseForgeApi
-import com.wowforever.addonmanager.model.Mod
-import com.wowforever.addonmanager.model.ModFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,14 +27,11 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
-import android.content.pm.PackageManager
-import androidx.core.content.FileProvider
 
 @Composable
 fun AddonManagerApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("addon_manager", Context.MODE_PRIVATE) }
-    var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
     var folderUri by remember { mutableStateOf(prefs.getString("folder_uri", null)?.let { Uri.parse(it) }) }
     var currentScreen by remember { mutableStateOf("home") }
     val scope = rememberCoroutineScope()
@@ -58,33 +50,16 @@ fun AddonManagerApp() {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         when (currentScreen) {
             "home" -> HomeScreen(
-                apiKey = apiKey,
-                onApiKeyChange = { apiKey = it; prefs.edit().putString("api_key", it).apply() },
                 folderUri = folderUri,
                 onPickFolder = { folderPicker.launch(null) },
-                onSearch = { currentScreen = "search" },
                 onInstalled = { currentScreen = "installed" },
                 onBrowse = { currentScreen = "browse" },
                 onInstallFromUrl = { currentScreen = "url" },
-                onAutoDetect = {
-                    // Try common path
-                    val common = File(Environment.getExternalStorageDirectory(), "WoW Forever/_forever_/Interface/AddOns")
-                    if (common.exists() && common.isDirectory) {
-                        // For simplicity, note that SAF is preferred; user can still pick
-                        // In practice, for shared storage we might need different handling
-                    }
-                },
-                context = context
-            )
-            "search" -> SearchScreen(
-                apiKey = apiKey,
-                folderUri = folderUri,
-                onBack = { currentScreen = "home" },
                 context = context
             )
             "installed" -> InstalledScreen(
                 folderUri = folderUri,
-                apiKey = apiKey,
+                apiKey = "",
                 onBack = { currentScreen = "home" },
                 context = context
             )
@@ -103,15 +78,11 @@ fun AddonManagerApp() {
 
 @Composable
 fun HomeScreen(
-    apiKey: String,
-    onApiKeyChange: (String) -> Unit,
     folderUri: Uri?,
     onPickFolder: () -> Unit,
-    onSearch: () -> Unit,
     onInstalled: () -> Unit,
     onBrowse: () -> Unit,
     onInstallFromUrl: () -> Unit,
-    onAutoDetect: () -> Unit,
     context: Context
 ) {
     var updateMessage by remember { mutableStateOf<String?>(null) }
@@ -120,20 +91,7 @@ fun HomeScreen(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("WoW Forever Addon Manager", style = MaterialTheme.typography.headlineMedium, color = CurseText)
-        Text("Browse addons from WoWInterface. API key is optional.", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
-
-        OutlinedTextField(
-            value = apiKey,
-            onValueChange = onApiKeyChange,
-            label = { Text("CurseForge API Key (optional)") },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = CurseOrange,
-                unfocusedBorderColor = CurseMuted,
-                focusedLabelColor = CurseOrange,
-                cursorColor = CurseOrange
-            )
-        )
+        Text("Browse and install addons from WoWInterface.", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
 
         Button(onClick = onPickFolder, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text(if (folderUri != null) "Change AddOns Folder" else "Select AddOns Folder")
@@ -150,8 +108,8 @@ fun HomeScreen(
         Button(onClick = onInstalled, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) {
             Text("Installed Addons")
         }
-        Button(onClick = onSearch, enabled = apiKey.isNotBlank() && folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF555555))) {
-            Text("Search (CurseForge API)")
+        Button(onClick = onInstallFromUrl, enabled = folderUri != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF555555))) {
+            Text("Install from URL")
         }
 
         Button(
@@ -192,7 +150,7 @@ suspend fun checkForUpdate(context: Context): String {
         client.newCall(req).execute().use { it.body?.string() ?: throw Exception("Empty response") }
     }
     val json = JSONObject(body)
-    val tag = json.getString("tag_name") // e.g. v1.0-17
+    val tag = json.getString("tag_name")
     val latestVersion = tag.removePrefix("v").substringBefore("-")
 
     if (latestVersion <= currentVersion) {
@@ -201,20 +159,17 @@ suspend fun checkForUpdate(context: Context): String {
 
     val assets = json.getJSONArray("assets")
     var apkUrl: String? = null
-    var apkName = "WoWForeverAddonManager.apk"
     for (i in 0 until assets.length()) {
         val asset = assets.getJSONObject(i)
         val name = asset.getString("name")
         if (name.endsWith(".apk")) {
             apkUrl = asset.getString("browser_download_url")
-            apkName = name
             break
         }
     }
     if (apkUrl == null) return "No APK found in latest release $tag"
 
-    // Download the APK
-    val apkFile = File(context.cacheDir, apkName)
+    val apkFile = File(context.cacheDir, "WoWForeverAddonManager.apk")
     withContext(Dispatchers.IO) {
         val dlReq = Request.Builder().url(apkUrl).build()
         client.newCall(dlReq).execute().use { resp ->
@@ -225,19 +180,20 @@ suspend fun checkForUpdate(context: Context): String {
         }
     }
 
-    // Prompt install via FileProvider (more reliable flags)
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
     val intent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(uri, "application/vnd.android.package-archive")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+        putExtra(Intent.EXTRA_RETURN_RESULT, true)
     }
     return try {
         context.startActivity(intent)
         "Update $tag downloaded. Install prompt opened."
     } catch (e: Exception) {
-        "Downloaded but could not open installer: ${e.message}. File is at ${apkFile.absolutePath}"
+        "Downloaded but could not open installer: ${e.message}\nFile: ${apkFile.absolutePath}"
     }
 }
 
@@ -254,7 +210,7 @@ fun UrlInstallScreen(folderUri: Uri?, onBack: () -> Unit, context: Context) {
             Spacer(Modifier.width(8.dp))
             Text("Install from URL", style = MaterialTheme.typography.titleMedium, color = CurseText)
         }
-        Text("Paste a direct .zip download link (from CurseForge, GitHub, WowInterface, etc.).", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
+        Text("Paste a direct .zip download link.", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
@@ -327,160 +283,6 @@ suspend fun installFromUrl(url: String, folderUri: Uri, context: Context) {
                             val outFile = current.findFile(outName)
                                 ?: current.createFile("application/octet-stream", outName)
                                 ?: throw Exception("Failed to create file $outName")
-                            context.contentResolver.openOutputStream(outFile.uri)?.use { out ->
-                                zis.copyTo(out)
-                            }
-                        }
-                    }
-                }
-                zis.closeEntry()
-                entry = zis.nextEntry
-            }
-        }
-    }
-    tempFile.delete()
-}
-
-@Composable
-fun SearchScreen(apiKey: String, folderUri: Uri?, onBack: () -> Unit, context: Context) {
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Mod>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text("Back") }
-            Spacer(Modifier.width(8.dp))
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                label = { Text("Search addons") },
-                modifier = Modifier.weight(1f),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = CurseOrange,
-                    unfocusedBorderColor = CurseMuted,
-                    focusedLabelColor = CurseOrange,
-                    cursorColor = CurseOrange
-                )
-            )
-            Button(onClick = {
-                if (query.isBlank()) return@Button
-                loading = true
-                error = null
-                scope.launch {
-                    try {
-                        val api = CurseForgeApi(apiKey)
-                        val resp = withContext(Dispatchers.IO) { api.searchMods(query) }
-                        results = resp.data
-                    } catch (e: Exception) {
-                        error = e.message
-                    }
-                    loading = false
-                }
-            }, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text("Search") }
-        }
-        if (loading) CircularProgressIndicator(color = CurseOrange)
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        LazyColumn {
-            items(results) { mod ->
-                ModCard(mod, apiKey, folderUri, context)
-            }
-        }
-    }
-}
-
-@Composable
-fun ModCard(mod: Mod, apiKey: String, folderUri: Uri?, context: Context) {
-    var expanded by remember { mutableStateOf(false) }
-    var files by remember { mutableStateOf<List<ModFile>>(emptyList()) }
-    var installing by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = CurseCard)) {
-        Column(Modifier.padding(12.dp)) {
-            Text(mod.name, style = MaterialTheme.typography.titleMedium, color = CurseText)
-            Text(mod.summary, maxLines = 2, style = MaterialTheme.typography.bodySmall, color = CurseMuted)
-            Text("${mod.downloadCount} downloads", style = MaterialTheme.typography.bodySmall, color = CurseMuted)
-            Button(onClick = {
-                expanded = !expanded
-                if (expanded && files.isEmpty()) {
-                    scope.launch {
-                        try {
-                            val api = CurseForgeApi(apiKey)
-                            files = withContext(Dispatchers.IO) { api.getModFiles(mod.id) }
-                        } catch (e: Exception) { /* ignore */ }
-                    }
-                }
-            }, colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)) { Text(if (expanded) "Hide files" else "Show files / Install") }
-
-            if (expanded) {
-                files.take(5).forEach { file ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${file.displayName} (${file.fileName})", modifier = Modifier.weight(1f), color = CurseText)
-                        Button(
-                            onClick = {
-                                installing = true
-                                scope.launch {
-                                    try {
-                                        installMod(apiKey, mod.id, file, folderUri, context)
-                                    } catch (e: Exception) { /* show error somehow */ }
-                                    installing = false
-                                }
-                            },
-                            enabled = !installing && folderUri != null,
-                            colors = ButtonDefaults.buttonColors(containerColor = CurseOrange)
-                        ) { Text("Install") }
-                    }
-                }
-                if (installing) CircularProgressIndicator(color = CurseOrange)
-            }
-        }
-    }
-}
-
-suspend fun installMod(apiKey: String, modId: Int, file: ModFile, folderUri: Uri?, context: Context) {
-    if (folderUri == null) return
-    val api = CurseForgeApi(apiKey)
-    val downloadUrl = withContext(Dispatchers.IO) { api.getDownloadUrl(modId, file.id) }
-
-    // Download
-    val client = okhttp3.OkHttpClient()
-    val req = okhttp3.Request.Builder().url(downloadUrl).header("x-api-key", apiKey).build()
-    val resp = withContext(Dispatchers.IO) { client.newCall(req).execute() }
-    if (!resp.isSuccessful) throw Exception("Download failed")
-
-    val tempFile = File(context.cacheDir, file.fileName)
-    withContext(Dispatchers.IO) {
-        resp.body?.byteStream()?.use { input ->
-            FileOutputStream(tempFile).use { output -> input.copyTo(output) }
-        }
-    }
-
-    // Extract to SAF folder
-    val tree = DocumentFile.fromTreeUri(context, folderUri) ?: throw Exception("Invalid folder")
-    withContext(Dispatchers.IO) {
-        ZipInputStream(tempFile.inputStream()).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                if (!entry.isDirectory && entry.name.isNotEmpty()) {
-                    val parts = entry.name.trim('/').split('/')
-                    if (parts.isNotEmpty()) {
-                        var current: DocumentFile = tree
-                        // Create intermediate directories
-                        for (i in 0 until parts.size - 1) {
-                            val part = parts[i]
-                            if (part.isNotEmpty()) {
-                                current = current.findFile(part) ?: current.createDirectory(part)
-                                    ?: throw Exception("Failed to create dir $part")
-                            }
-                        }
-                        val fileName = parts.last()
-                        if (fileName.isNotEmpty()) {
-                            val outFile = current.findFile(fileName)
-                                ?: current.createFile("application/octet-stream", fileName)
-                                ?: throw Exception("Failed to create file $fileName")
                             context.contentResolver.openOutputStream(outFile.uri)?.use { out ->
                                 zis.copyTo(out)
                             }
